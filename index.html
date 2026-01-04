@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>2026 麻將戰績統計 🀄️</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans TC', sans-serif; background-color: #FDFBF0; color: #4E342E; margin: 0; padding: 0; }
+        .hard-shadow { box-shadow: 6px 6px 0px 0px #4E342E; }
+        .hard-shadow-sm { box-shadow: 4px 4px 0px 0px #4E342E; }
+        .active-press:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0px 0px #4E342E; }
+        input[type="number"]::-webkit-inner-spin-button, 
+        input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBZdmfuEBVUF0Avm1logUea1eShKHsdG9k", 
+            authDomain: "my-mahjong-app-f0103.firebaseapp.com",
+            projectId: "my-mahjong-app-f0103",
+            storageBucket: "my-mahjong-app-f0103.firebasestorage.app",
+            messagingSenderId: "769818096034",
+            appId: "1:769818096034:web:d1023cd7366a5dc9ce82fb"
+        };
+
+        let db, auth;
+        try {
+            if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+            db = firebase.firestore();
+            auth = firebase.auth();
+        } catch (e) { console.error(e); }
+
+        const App = () => {
+            const [user, setUser] = useState(null);
+            const [records, setRecords] = useState({});
+            const [currentDate, setCurrentDate] = useState(new Date(2026, 0, 1));
+            const [modal, setModal] = useState({ open: false, date: '' });
+            const [form, setForm] = useState({ win: '', lose: '', rounds: 1, chip: '30/10', customChip: '' });
+            const [msg, setMsg] = useState(null);
+
+            useEffect(() => {
+                if (firebaseConfig.apiKey.includes("這裡請填入")) {
+                    setMsg("⚠️ 尚未填寫 apiKey，請在 index.html 中替換。");
+                    return;
+                }
+                auth.signInAnonymously().catch(() => setMsg("⚠️ 請開啟 Firebase 匿名登入"));
+                const unsubscribeAuth = auth.onAuthStateChanged(u => setUser(u));
+                return () => unsubscribeAuth();
+            }, []);
+
+            useEffect(() => {
+                if (!user) return;
+                const unsubscribe = db.collection('mj_records').onSnapshot(
+                    snap => {
+                        const data = {};
+                        snap.forEach(doc => data[doc.id] = doc.data());
+                        setRecords(data);
+                    },
+                    err => setMsg("⚠️ 權限錯誤：請檢查 Firestore Rules。")
+                );
+                return () => unsubscribe();
+            }, [user]);
+
+            const stats = useMemo(() => {
+                let w = 0, l = 0;
+                Object.values(records).forEach(r => {
+                    w += Number(r.win || 0);
+                    l += Number(r.lose || 0);
+                });
+                return { win: w, lose: l, net: w - l };
+            }, [records]);
+
+            const calendar = useMemo(() => {
+                const y = currentDate.getFullYear();
+                const m = currentDate.getMonth();
+                return {
+                    totalDays: new Date(y, m + 1, 0).getDate(),
+                    firstDay: new Date(y, m, 1).getDay(),
+                    y, m
+                };
+            }, [currentDate]);
+
+            const onSave = async () => {
+                if (!user) return;
+                await db.collection('mj_records').doc(modal.date).set({
+                    ...form,
+                    win: Number(form.win || 0),
+                    lose: Number(form.lose || 0),
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                setModal({ open: false, date: '' });
+            };
+
+            return (
+                <div className="max-w-md mx-auto p-4 min-h-screen pb-10">
+                    <h1 className="text-3xl font-black text-center py-6">2026 麻將統計 🀄️</h1>
+
+                    {msg && <div className="bg-red-50 border-2 border-red-500 p-3 rounded-xl text-red-700 text-xs font-bold mb-4">{msg}</div>}
+
+                    {/* 數據板 */}
+                    <div className="bg-white border-[3px] border-[#4E342E] hard-shadow rounded-2xl flex divide-x-[3px] divide-[#4E342E] mb-6 overflow-hidden text-center">
+                        <div className="flex-1 py-3"><div className="text-[10px] font-black text-green-600">總勝</div><div className="text-xl font-black">${stats.win}</div></div>
+                        <div className="flex-1 py-3"><div className="text-[10px] font-black text-red-600">總敗</div><div className="text-xl font-black">${stats.lose}</div></div>
+                        <div className="flex-1 py-3 bg-orange-50"><div className="text-[10px] font-black text-gray-500">淨利</div><div className={`text-xl font-black ${stats.net >= 0 ? 'text-green-700' : 'text-red-700'}`}>{stats.net > 0 ? '+' : ''}{stats.net}</div></div>
+                    </div>
+
+                    {/* 日曆 */}
+                    <div className="bg-white border-[3px] border-[#4E342E] hard-shadow rounded-2xl p-4 mb-6">
+                        <div className="flex justify-between items-center mb-4">
+                            <button onClick={() => setCurrentDate(new Date(calendar.y, calendar.m - 1, 1))} className="bg-gray-100 border-2 border-[#4E342E] px-3 py-1 rounded-lg font-black active-press">◀</button>
+                            <div className="font-black text-lg">{calendar.y}年 {calendar.m + 1}月</div>
+                            <button onClick={() => setCurrentDate(new Date(calendar.y, calendar.m + 1, 1))} className="bg-gray-100 border-2 border-[#4E342E] px-3 py-1 rounded-lg font-black active-press">▶</button>
+                        </div>
+                        <div className="grid grid-cols-7 gap-1 text-center font-black text-[10px] mb-2 text-gray-400">
+                            {['日','一','二','三','四','五','六'].map(d => <div key={d}>{d}</div>)}
+                        </div>
+                        <div className="grid grid-cols-7 gap-1">
+                            {Array(calendar.firstDay).fill(0).map((_, i) => <div key={i} />)}
+                            {Array(calendar.totalDays).fill(0).map((_, i) => {
+                                const d = i + 1;
+                                const dateStr = `${calendar.y}-${calendar.m + 1}-${d}`;
+                                const r = records[dateStr];
+                                return (
+                                    <div key={d} onClick={() => {
+                                        setModal({ open: true, date: dateStr });
+                                        setForm(r || { win: '', lose: '', rounds: 1, chip: '30/10', customChip: '' });
+                                    }} className={`aspect-square border-2 rounded-xl flex flex-col items-center justify-center cursor-pointer active-press ${r ? 'bg-[#4E342E] border-[#4E342E] text-white' : 'border-gray-50'}`}>
+                                        <span className="text-sm font-black">{d}</span>
+                                        {r && <span className="text-[7px] font-bold">{(r.win - r.lose) > 0 ? '+' : ''}{r.win - r.lose}</span>}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* 彈窗 */}
+                    {modal.open && (
+                        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-6">
+                            <div className="bg-[#FDFBF0] border-[4px] border-[#4E342E] hard-shadow rounded-3xl p-6 w-full max-w-xs">
+                                <h2 className="text-xl font-black mb-4 text-center">{modal.date}</h2>
+                                <div className="space-y-4 font-black text-xs">
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {['30/10','50/20','100/20','自訂'].map(c => (
+                                            <button key={c} onClick={() => setForm({...form, chip: c})} className={`py-2 border-[3px] border-[#4E342E] rounded-xl active-press ${form.chip === c ? 'bg-[#4E342E] text-white' : 'bg-white'}`}>{c}</button>
+                                        ))}
+                                    </div>
+                                    {form.chip === '自訂' && <input type="text" placeholder="輸入底台" className="w-full border-2 border-[#4E342E] p-2 rounded-lg" value={form.customChip} onChange={e => setForm({...form, customChip: e.target.value})} />}
+                                    
+                                    <div className="flex items-center gap-2">
+                                        <span>將數：</span>
+                                        <input type="number" className="w-16 border-2 border-[#4E342E] p-1.5 rounded-lg text-center" value={form.rounds} onChange={e => setForm({...form, rounds: e.target.value})} />
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div><div className="text-green-600 mb-1">贏</div><input type="number" className="w-full border-2 border-green-600 p-2 rounded-xl text-center" value={form.win} onChange={e => setForm({...form, win: e.target.value})} /></div>
+                                        <div><div className="text-red-600 mb-1">輸</div><input type="number" className="w-full border-2 border-red-600 p-2 rounded-xl text-center" value={form.lose} onChange={e => setForm({...form, lose: e.target.value})} /></div>
+                                    </div>
+
+                                    <div className="flex gap-2 pt-2">
+                                        <button onClick={() => setModal({open: false, date: ''})} className="flex-1 border-2 border-[#4E342E] py-2 rounded-xl active-press bg-gray-100">取消</button>
+                                        <button onClick={onSave} className="flex-1 border-2 border-[#4E342E] py-2 rounded-xl active-press bg-orange-200">儲存</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
+
